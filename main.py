@@ -4,6 +4,7 @@ from PIL import Image
 import numpy as np
 from sklearn.cluster import KMeans
 import io
+import math
 
 app = FastAPI()
 
@@ -39,4 +40,104 @@ async def uv_space(image: UploadFile = File(...), k: int = Form(...)):
         array_of_luv.append([u, v])
 
     kmeans = KMeans(n_clusters=k, n_init=10).fit(array_of_luv)
-    return {"centroids": kmeans.cluster_centers_.tolist()}
+    list_of_centroids = kmeans.cluster_centers_.tolist()
+    
+    confusion_points = {
+        "prota": [0.678, 0.501],
+        "deutera": [-1.217, 0.782],
+        "trita": [0.257, 0.0],
+    }
+    
+    
+    def get_r_theta(point_type: str):
+        result_list = []
+        for centroids in list_of_centroids:
+            u_c = centroids[0]
+            v_c = centroids[1]
+            u_conf = confusion_points[point_type][0]
+            v_conf = confusion_points[point_type][1]
+            r = math.sqrt(((u_c - u_conf) ** 2) + ((v_c - v_conf) ** 2))
+            
+            seta = math.atan((v_c - v_conf) / (u_c - u_conf))
+            
+            result_list.append({
+                "r": r,
+                "seta": seta
+            })
+        return result_list
+    
+    list_of_r_prota = get_r_theta("prota")
+    list_of_r_deutera = get_r_theta("deutera")
+    list_of_r_trita = get_r_theta("trita")
+    
+    
+    
+    # for centroids in list_of_centroids:
+    #     u_c = centroids[0]
+    #     v_c = centroids[1]
+    #     u_conf = confusion_points["deutera"][0]
+    #     v_conf = confusion_points["deutera"][1]
+    #     r = math.sqrt(((u_c - u_conf) ** 2) + ((v_c - v_conf) ** 2))
+        
+    #     seta = math.atan((v_c - v_conf) / (u_c - u_conf))
+        
+    #     list_of_r_deutera.append({
+    #         "r": r,
+    #         "seta": seta
+    #     })
+    
+    # for centroids in list_of_centroids:
+    #     u_c = centroids[0]
+    #     v_c = centroids[1]
+    #     u_conf = confusion_points["trita"][0]
+    #     v_conf = confusion_points["trita"][1]
+    #     r = math.sqrt(((u_c - u_conf) ** 2) + ((v_c - v_conf) ** 2))
+        
+    #     seta = math.atan((v_c - v_conf) / (u_c - u_conf))
+        
+    #     list_of_r_trita.append({
+    #         "r": r,
+    #         "seta": seta
+    #     })
+    
+    print("list_of_r_prota: ", list_of_r_prota, end="\n")
+    print("list_of_r_deutera: ", list_of_r_deutera, end="\n")
+    print("list_of_r_trita: ", list_of_r_trita, end="\n")
+
+    result_list = []
+
+    for i in range(len(list_of_centroids)):
+        result_list.append({
+            "centroids": list_of_centroids[i],
+            "r_setas": {
+                "prota": list_of_r_prota[i],
+                "deutera": list_of_r_deutera[i],
+                "trita": list_of_r_trita[i]
+            }
+        })
+
+    
+    """
+    [
+        {
+            "centroids": [0.65654, 0.6468], [i]
+            "r_setas": {
+    #         "prota": list_of_r_prota, [i]
+    #         "deutera": list_of_r_deutera, [i]
+    #         "trita": list_of_r_trita [i]
+    #     }
+        }
+    ]
+    """
+    # return {
+    #     "centroids": list_of_centroids,
+    #     "r_setas": {
+    #         "prota": list_of_r_prota,
+    #         "deutera": list_of_r_deutera,
+    #         "trita": list_of_r_trita
+    #     }
+    # }
+
+    print(result_list)
+
+    return {"centroids": list_of_centroids}
