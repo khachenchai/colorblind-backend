@@ -70,39 +70,9 @@ async def uv_space(image: UploadFile = File(...), k: int = Form(...)):
     list_of_r_deutera = get_r_theta("deutera")
     list_of_r_trita = get_r_theta("trita")
     
-    
-    
-    # for centroids in list_of_centroids:
-    #     u_c = centroids[0]
-    #     v_c = centroids[1]
-    #     u_conf = confusion_points["deutera"][0]
-    #     v_conf = confusion_points["deutera"][1]
-    #     r = math.sqrt(((u_c - u_conf) ** 2) + ((v_c - v_conf) ** 2))
-        
-    #     seta = math.atan((v_c - v_conf) / (u_c - u_conf))
-        
-    #     list_of_r_deutera.append({
-    #         "r": r,
-    #         "seta": seta
-    #     })
-    
-    # for centroids in list_of_centroids:
-    #     u_c = centroids[0]
-    #     v_c = centroids[1]
-    #     u_conf = confusion_points["trita"][0]
-    #     v_conf = confusion_points["trita"][1]
-    #     r = math.sqrt(((u_c - u_conf) ** 2) + ((v_c - v_conf) ** 2))
-        
-    #     seta = math.atan((v_c - v_conf) / (u_c - u_conf))
-        
-    #     list_of_r_trita.append({
-    #         "r": r,
-    #         "seta": seta
-    #     })
-    
-    print("list_of_r_prota: ", list_of_r_prota, end="\n")
-    print("list_of_r_deutera: ", list_of_r_deutera, end="\n")
-    print("list_of_r_trita: ", list_of_r_trita, end="\n")
+    # print("list_of_r_prota: ", list_of_r_prota, end="\n")
+    # print("list_of_r_deutera: ", list_of_r_deutera, end="\n")
+    # print("list_of_r_trita: ", list_of_r_trita, end="\n")
 
     result_list = []
 
@@ -116,7 +86,15 @@ async def uv_space(image: UploadFile = File(...), k: int = Form(...)):
             }
         })
 
-    
+    """
+    [
+        [0.654615, 0.6853421],
+        [0.654615, 0.6853421],
+        [0.654615, 0.6853421],
+        [0.654615, 0.6853421],
+    ]
+    """
+
     """
     [
         {
@@ -140,4 +118,4 @@ async def uv_space(image: UploadFile = File(...), k: int = Form(...)):
 
     print(result_list)
 
-    return {"centroids": list_of_centroids}
+    return {"centroids": result_list}
