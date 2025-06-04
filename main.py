@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import numpy as np
@@ -119,3 +119,89 @@ async def uv_space(image: UploadFile = File(...), k: int = Form(...)):
     print(result_list)
 
     return {"centroids": result_list}
+
+@app.post('/analysis')
+async def analysis(req: Request):
+    body = await req.json()
+    r_seta_type = body.get("r_seta_type")
+    centriods = body.get("centriods")
+
+    list_of_seta = []
+    list_of_m = []
+
+    for i in range(len(centriods)):
+        # print(centriods[i]['r_setas'][r_seta_type]['seta'])
+        list_of_seta.append({
+            "cluster_num": i + 1,
+            "seta": centriods[i]['r_setas'][r_seta_type]['seta']
+        })
+
+    n = len(list_of_seta)
+    for k in range(n):
+        m_k = ((list_of_seta[k]['seta'] - list_of_seta[k - 1]['seta']) ** 2) + ((list_of_seta[(k + 1) % n]['seta'] - list_of_seta[k]['seta']) ** 2)
+        # print(M)
+        list_of_m.append({
+            "cluster_num": list_of_seta[k]['cluster_num'],
+            "cluster_seta": list_of_seta[k]['seta'],
+            "m_k": m_k
+        })
+    
+    sorted_m_k = sorted(list_of_m, key=lambda x: x['m_k'], reverse=True)
+    # print(sorted_m_k)
+
+
+    # ค่าเริ่มต้นที่ได้มา
+    seta_prime_new_after = sorted_m_k[1]['cluster_seta']
+    seta_prime_new_previous = sorted_m_k[-1]['cluster_seta']
+
+    print("seta_prime_new_after:", seta_prime_new_after)
+    print("seta_prime_new_previous:", seta_prime_new_previous)
+
+    # สร้าง dict เก็บค่า curr_seta ของแต่ละ cluster
+    # สร้าง dict เก็บค่า curr_seta ของแต่ละ cluster
+    curr_setas = {c['cluster_num']: c['cluster_seta'] for c in sorted_m_k}
+
+    # สร้าง dict เก็บ new_seta ของแต่ละ cluster ในแต่ละรอบ m
+    result_list = []
+
+    for m in range(1, 21):
+        new_setas = {}
+
+        a = (seta_prime_new_after + seta_prime_new_previous) * 0.5
+
+        for c in sorted_m_k:
+            cluster_num = c['cluster_num']
+            curr_seta = curr_setas[cluster_num]
+
+            b = curr_seta + (m / 100)
+
+            if (a >= b or a <= b):
+                new_seta = curr_seta - (m / 100)
+            else:
+                new_seta = a
+
+            # เก็บ dict นี้ใน result_list ทันที
+            result_list.append({
+                "cluster_num": cluster_num,
+                "m": m,
+                "new_seta": new_seta
+            })
+
+            # เก็บ new_seta ของ cluster นี้ สำหรับรอบถัดไป
+            new_setas[cluster_num] = new_seta
+
+        # อัพเดต curr_setas สำหรับรอบถัดไป
+        curr_setas = new_setas.copy()
+
+
+
+    # ✅ แสดงผลลัพธ์
+    # for m, cluster_setas in new_setas_per_m.items():
+    #     print(f"รอบ m={m}: {cluster_setas}")
+    print(result_list)
+
+    
+    
+    # print("r_seta_type:", r_seta_type)
+    # print("centriods:", centriods)
+    return {'msg': 'wow'}
