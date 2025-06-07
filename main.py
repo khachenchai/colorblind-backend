@@ -189,7 +189,16 @@ def remap_for_prota_and_deutera(centriods, cluster_type, m_body_value, curr_seta
         elif cluster_type == 'deutera':
             seta_v = 1.6428
         
-        a = (math.atan((math.tan(seta_prime_new_after - seta_v) - math.tan(seta_prime_new_previous - seta_v)))) + seta_v
+        x1 = math.cos(seta_prime_new_after - seta_v)
+        y1 = math.sin(seta_prime_new_after - seta_v)
+        x2 = math.cos(seta_prime_new_previous - seta_v)
+        y2 = math.sin(seta_prime_new_previous - seta_v)
+
+        avg_x = (x1 + x2) / 2
+        avg_y = (y1 + y2) / 2
+        
+        # a = (math.atan2((math.tan(seta_prime_new_after - seta_v) - math.tan(seta_prime_new_previous - seta_v)))) + seta_v
+        a = math.atan2(avg_y, avg_x) + seta_v
 
         for c in sorted_m_k:
             cluster_num = c['cluster_num']
