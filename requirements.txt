@@ -1,3 +1,7 @@
 fastapi
 uvicorn
 Pillow
+numpy
+skikit-image
+skikit-learn
+colorspacious
