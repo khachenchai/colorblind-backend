@@ -12,6 +12,7 @@ from skimage.color import deltaE_ciede2000
 from skimage.metrics import structural_similarity as ssim
 from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
+import random
 
 import colorspacious
 
@@ -39,13 +40,15 @@ M_MATRIX = np.array([
 
 array_of_luv = []
 list_of_pixel_clusters = []
-
+original_image_global = None
 
 @app.post("/uv-space")
 async def uv_space(image: UploadFile = File(...), k: int = Form(...), confType: str = 'prota'):
     print('confType', confType)
     # เปิดรูปภาพและแปลงเป็น RGB
+    global original_image_global
     img = Image.open(io.BytesIO(await image.read())).convert("RGB")
+    original_image_global = img
     width, height = img.size
     pixels = [img.getpixel((x, y)) for y in range(height) for x in range(width)]
 
@@ -214,6 +217,7 @@ def remap_for_prota_and_deutera(centriods, cluster_type, m_body_value, curr_seta
 
             b = curr_seta + (m_body_value)
 
+            random_offset = random.uniform(-0.1, 0.1)
             if (a >= b or a <= b):
                 new_seta = curr_seta - (m_body_value)
             else:
@@ -346,19 +350,34 @@ async def analysis(req: Request):
         "result": remap_result
     }
 
-    u_confs = {
-        "prota": 0.678,
-        # "deutera": -1.217,
-        "deutera": 0.54,
-        "trita": 0.257
-    }
+    if r_seta_type == "deutera":
+        u_conf = 0.54
+        v_conf = 0.56
+        index_subtractor = 0
+        b = 81.4
+        # b = 78
+        scale = 4.6
+        # scale = 4.2
+    elif r_seta_type == "prota":
+        u_conf = 0.678
+        v_conf = 0.501
+        index_subtractor = 1
+        b = 25
+        scale = 1
+    elif r_seta_type == "trita":
+        u_conf = 0.257
+        v_conf = 0.0
+        index_subtractor = 1
+        b = 25
+        scale = 1
+    else:
+        # fallback default
+        u_conf = 0.0
+        v_conf = 0.0
+        index_subtractor = 1
+        b = 25
+        scale = 1
 
-    v_confs = {
-        "prota": 0.501,
-        # "deutera": 0.782,
-        "deutera": 0.56,
-        "trita": 0.0
-    }
 
     translate_u_v = {
         "type": r_seta_type,
@@ -373,8 +392,14 @@ async def analysis(req: Request):
 
     # cluster_to_new_seta = {entry['cluster_num']: entry['new_seta'] for entry in remap_payload_result}
     # cluster_to_new_seta = {entry['cluster_num']: entry['new_seta'] for entry in remap_payload_result['result']}
+
+    if (r_seta_type == "deutera"):
+        index_subtractor = 0
+    else:
+        index_subtractor = 1
+
     cluster_to_new_seta = {
-        entry['cluster_num'] - 1: entry['new_seta']  # ✅ Fix here
+        entry['cluster_num'] - index_subtractor: entry['new_seta']  # ✅ Fix here
         for entry in remap_payload_result['result']
     }
     cluster_to_new_r = []
@@ -427,13 +452,13 @@ async def analysis(req: Request):
 
     for i in range(len(cluster_to_new_r)):
         curr_pixel = cluster_to_new_r[i]
-        u_prime = (u_confs[r_seta_type] + (curr_pixel['r'] * math.cos(curr_pixel['new_seta'])))
-        v_prime = (v_confs[r_seta_type] + (curr_pixel['r'] * math.sin(curr_pixel['new_seta'])))
+        u_prime = (u_conf + (scale * curr_pixel['r'] * math.cos(curr_pixel['new_seta'])))
+        v_prime = (v_conf + (scale * curr_pixel['r'] * math.sin(curr_pixel['new_seta'])))
 
         curr_pixel['u_prime'] = u_prime
         curr_pixel['v_prime'] = v_prime
 
-        b = 25
+        # b = 25
         curr_r_ij = curr_pixel['r']
         curr_l_ij = curr_pixel['l']
 
@@ -518,16 +543,13 @@ async def analysis(req: Request):
 
     # Get image dimensions from the pixel data
     if cluster_to_new_r:
-        # Find max x and y coordinates to determine image dimensions
         max_x = max(pixel['position']['x'] for pixel in cluster_to_new_r)
         max_y = max(pixel['position']['y'] for pixel in cluster_to_new_r)
         width = max_x + 1
         height = max_y + 1
         
-        # Create a new image with the calculated dimensions
         new_image = Image.new('RGB', (width, height))
         
-        # Create a dictionary to map positions to RGB values
         position_to_rgb = {}
         for pixel in cluster_to_new_r:
             if 'position' in pixel and 'new_rgb' in pixel:
@@ -538,43 +560,33 @@ async def analysis(req: Request):
                     pixel['new_rgb']['b']
                 )
                 position_to_rgb[pos] = rgb
-                # print(f"\n--- Pixel Debug ---")
-                # print(f"Cluster #{cluster_num}")
-                # print(f"new_seta: {new_seta}")
-                # print(f"r: {curr_pixel['r']}, l: {curr_pixel['l']}, l': {l_prime}")
-                # print(f"u': {u_prime}, v': {v_prime}")
-                # print(f"XYZ = {new_x:.4f}, {new_y:.4f}, {new_z:.4f}")
-                # print(f"Pre-Gamma RGB = ({first_r:.4f}, {first_g:.4f}, {first_b:.4f})")
-                # print(f"Final RGB = ({final_r:.2f}, {final_g:.2f}, {final_b:.2f})")
-        
-        
-        
-        # Fill the image with the new RGB values
+
         for y in range(height):
             for x in range(width):
                 if (x, y) in position_to_rgb:
                     new_image.putpixel((x, y), position_to_rgb[(x, y)])
-        
-        # Resize image if it's too large
-        max_size = 800  # Maximum dimension
-        if width > max_size or height > max_size:
-            ratio = min(max_size/width, max_size/height)
+
+        # ⬛️ ถ้าเป็น deutera ให้ blend กับภาพต้นฉบับ
+        if r_seta_type == "deutera" and original_image_global:
+            original_image = original_image_global.resize((width, height))
+            new_image = Image.blend(original_image, new_image, alpha=0.4)
+
+        if width > 800 or height > 800:
+            ratio = min(800 / width, 800 / height)
             new_width = int(width * ratio)
             new_height = int(height * ratio)
             new_image = new_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        # Convert the image to base64 with compression
+
         buffered = io.BytesIO()
-        new_image.save(buffered, format="JPEG", quality=85)  # Use JPEG for better compression
+        new_image.save(buffered, format="JPEG", quality=85)
         img_str = base64.b64encode(buffered.getvalue()).decode()
-        
+
         return {
             'pixelsData': cluster_to_new_r,
             'processedImage': img_str,
-            # 'delta_e': delta_e.tolist(),
-            # 'delta_e': delta_e_avg,
-            'imageFormat': 'jpeg'  # Add format information
+            'imageFormat': 'jpeg'
         }
+
 
 
 
