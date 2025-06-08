@@ -42,6 +42,10 @@ array_of_luv = []
 list_of_pixel_clusters = []
 original_image_global = None
 
+@app.get("/")
+async def hello():
+    return {'msg': 'Hello, This is API for colorblind project'}
+
 @app.post("/uv-space")
 async def uv_space(image: UploadFile = File(...), k: int = Form(...), confType: str = 'prota'):
     print('confType', confType)
