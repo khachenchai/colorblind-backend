@@ -2,6 +2,6 @@ fastapi
 uvicorn
 Pillow
 numpy
-skikit-image
-skikit-learn
+scikit-image
+scikit-learn
 colorspacious
