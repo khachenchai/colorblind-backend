@@ -9,6 +9,7 @@ import statistics
 import base64
 # from colormath.color_diff import delta_e_cie2000
 from skimage.color import deltaE_ciede2000
+from skimage.metrics import structural_similarity as ssim
 from colormath.color_conversions import convert_color
 from colormath.color_objects import sRGBColor, LabColor
 
@@ -605,36 +606,105 @@ def compute_intra_image_delta_e(image: Image.Image):
     width, height = image.size
     lab_list = []
 
-    # เก็บค่า Lab ของทุกพิกเซล
+    # Convert each pixel to Lab
     for y in range(height):
         for x in range(width):
             r, g, b = image.getpixel((x, y))
-            lab = convert_color(sRGBColor(r, g, b, is_upscaled=True), LabColor)
-            lab_list.append([lab.lab_l, lab.lab_a, lab.lab_b])
+            color = convert_color(sRGBColor(r, g, b, is_upscaled=True), LabColor)
+            lab_list.append([color.lab_l, color.lab_a, color.lab_b])
 
     lab_array = np.array(lab_list)
-    mean_lab = np.mean(lab_array, axis=0)
 
-    # คำนวณ Delta E เทียบกับค่าเฉลี่ย
+    # Compute average Lab
+    mean_lab = np.mean(lab_array, axis=0)
     mean_lab_array = np.tile(mean_lab, (lab_array.shape[0], 1))
+
+    # ΔE2000 of each pixel from the mean
     delta_e = deltaE_ciede2000(lab_array, mean_lab_array)
     delta_e_avg = float(np.mean(delta_e))
+    delta_e_max = float(np.max(delta_e))
+    delta_e_min = float(np.min(delta_e))
+    delta_e_std = float(np.std(delta_e))
 
-    return delta_e_avg
+    return {
+        "delta_e_avg": round(delta_e_avg, 4),
+        "delta_e_max": round(delta_e_max, 4),
+        "delta_e_min": round(delta_e_min, 4),
+        "delta_e_std": round(delta_e_std, 4)
+    }
+
+def compute_colorfulness(image: Image.Image):
+    img = np.array(image).astype("float")
+
+    # แยกช่อง R, G, B
+    (R, G, B) = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+
+    # คำนวณ rg = R - G และ yb = 0.5*(R + G) - B
+    rg = np.abs(R - G)
+    yb = np.abs(0.5 * (R + G) - B)
+
+    # คำนวณ mean และ std dev ของ rg และ yb
+    std_rg, mean_rg = np.std(rg), np.mean(rg)
+    std_yb, mean_yb = np.std(yb), np.mean(yb)
+
+    # ใช้สูตรจาก paper
+    colorfulness = np.sqrt(std_rg**2 + std_yb**2) + 0.3 * np.sqrt(mean_rg**2 + mean_yb**2)
+    return round(float(colorfulness), 4)
+
+def compute_tsnr(image1: np.ndarray, image2: np.ndarray):
+    # Stack 2 images along new axis
+    stack = np.stack([image1, image2], axis=0)  # shape: (2, H, W, C)
+    
+    signal = np.mean(stack, axis=0)  # mean over time axis
+    noise = np.std(stack, axis=0)    # std over time axis
+    
+    # To avoid divide-by-zero
+    tsnr = np.where(noise == 0, 0, signal / noise)
+    tsnr_mean = np.mean(tsnr)
+    
+    return tsnr_mean
 
 @app.post('/findDeltaE')
-async def find_intra_delta_e(
+async def find_delta_e(
     img1: UploadFile = File(...),
     img2: UploadFile = File(...)
 ):
-    image1 = Image.open(io.BytesIO(await img1.read())).convert("RGB")
-    image2 = Image.open(io.BytesIO(await img2.read())).convert("RGB")
+    # อ่านไฟล์แค่ครั้งเดียว
+    img1_bytes = await img1.read()
+    img2_bytes = await img2.read()
 
-    delta1 = compute_intra_image_delta_e(image1)
-    delta2 = compute_intra_image_delta_e(image2)
+    # แปลงเป็นภาพ
+    image1 = Image.open(io.BytesIO(img1_bytes)).convert("RGB")
+    image2 = Image.open(io.BytesIO(img2_bytes)).convert("RGB")
+
+    # ΔE ภายในภาพ
+    result1 = compute_intra_image_delta_e(image1)
+    result2 = compute_intra_image_delta_e(image2)
+
+    # SSIM
+    img1_arr = np.array(image1)
+    img2_arr = np.array(image2)
+    ssim_val, _ = ssim(img1_arr, img2_arr, channel_axis=-1, full=True)
+
+    # Colorfulness
+    colorfulness1 = compute_colorfulness(image1)
+    colorfulness2 = compute_colorfulness(image2)
+
+    # tSNR (ใช้ np.array ที่ได้จาก image1/2)
+    img1_np = img1_arr.astype(np.float32)
+    img2_np = img2_arr.astype(np.float32)
+    tsnr_value = compute_tsnr(img1_np, img2_np)
 
     return {
-        "intra_delta_e_image1": round(delta1, 4),
-        "intra_delta_e_image2": round(delta2, 4),
-        "msg": "ΔE ภายในภาพคำนวณสำเร็จ"
+        "image1": {
+            **result1,
+            "colorfulness": colorfulness1
+        },
+        "image2": {
+            **result2,
+            "colorfulness": colorfulness2
+        },
+        "ssim": round(ssim_val, 4),
+        "tSNR": float(tsnr_value),
+        "msg": "คำนวณ metrics สำเร็จ"
     }
